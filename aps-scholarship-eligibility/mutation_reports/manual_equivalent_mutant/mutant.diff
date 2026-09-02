@@ -1,0 +1,14 @@
+Mutante manual (não gerado pelo mutmut, que só muta corpos de função -- ver relatório):
+--- src/scholarship_eligibility_evaluator.py
++++ src/scholarship_eligibility_evaluator.py (mutante manual)
+--- src/scholarship_eligibility_evaluator.py	2026-09-02 21:16:03.677027456 +0000
++++ /tmp/frozen_mutant_demo/src/scholarship_eligibility_evaluator.py	2026-09-02 21:25:00.729059380 +0000
+@@ -9,7 +9,7 @@
+     MANUAL_REVIEW = "MANUAL_REVIEW"
+ 
+ 
+-@dataclass(frozen=True)
++@dataclass(frozen=False)
+ class EvaluationResult:
+     status: Status
+     reasons: List[str]

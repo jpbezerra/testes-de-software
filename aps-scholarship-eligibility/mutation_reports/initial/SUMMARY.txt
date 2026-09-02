@@ -1,0 +1,1 @@
+84 mutantes gerados / 82 killed / 2 survived -> mutation score = 82/84 = 97.62%

@@ -1,0 +1,9 @@
+# scholarship_eligibility_evaluator.x__validate_inputs__mutmut_16: survived
+--- src/scholarship_eligibility_evaluator.py
++++ src/scholarship_eligibility_evaluator.py
+@@ -3,4 +3,4 @@
+         raise ValueError("GPA must be between 0 and 10.")
+ 
+     if attendance_rate < 0.0 or attendance_rate > 100.0:
+-        raise ValueError("Attendance rate must be between 0 and 100.")
++        raise ValueError("XXAttendance rate must be between 0 and 100.XX")

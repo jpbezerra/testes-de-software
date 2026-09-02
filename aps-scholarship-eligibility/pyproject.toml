@@ -1,0 +1,8 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["mutants", ".git", "*.egg"]
+
+[tool.mutmut]
+source_paths = ["src"]
+also_copy = ["conftest.py", "tests"]
+pytest_add_cli_args_test_selection = ["tests"]
