@@ -1,0 +1,21 @@
+# Clientes de LLM
+anthropic>=0.40.0
+google-genai>=0.5.0
+
+# SAST
+semgrep>=1.90.0
+
+# HTTP / utilidades
+requests>=2.32.0
+python-dotenv>=1.0.1
+tenacity>=9.0.0
+tqdm>=4.66.0
+
+# Dados / análise
+pandas>=2.2.0
+numpy>=1.26.0
+scipy>=1.13.0          # scipy.stats.contingency / mcnemar manual
+statsmodels>=0.14.0    # statsmodels.stats.contingency_tables.mcnemar
+
+# Git (clone de repositórios do benchmark)
+GitPython>=3.1.43

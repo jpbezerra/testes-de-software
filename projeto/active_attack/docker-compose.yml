@@ -1,0 +1,74 @@
+# Ambiente isolado para a Abordagem D (RQ4): aplicações PROPOSITALMENTE VULNERÁVEIS,
+# executadas em uma rede Docker interna (sem rota para a internet). NÃO adicione serviços
+# que não sejam, eles próprios, aplicações vulneráveis conhecidas e locais.
+#
+# Uso:
+#   docker compose up -d
+#   docker compose ps
+#   docker compose down -v        # ao final da coleta
+#
+# IMPORTANTE: "internal: true" na rede remove a rota padrão para a internet dos
+# containers — eles só se comunicam entre si e com o host via as portas publicadas
+# abaixo. Isso é intencional: impede que qualquer um desses apps (ou um agente operando
+# contra eles) alcance outra coisa na rede.
+
+networks:
+  vulnerable_net:
+    internal: true
+
+services:
+  juice-shop:
+    image: bkimminich/juice-shop:latest
+    container_name: active_attack_juice_shop
+    ports:
+      - "3000:3000"
+    networks:
+      - vulnerable_net
+    restart: unless-stopped
+
+  pygoat:
+    image: pygoat/pygoat:latest
+    container_name: active_attack_pygoat
+    ports:
+      - "8000:8000"
+    networks:
+      - vulnerable_net
+    restart: unless-stopped
+
+  vampi:
+    image: erev0s/vampi:latest
+    container_name: active_attack_vampi
+    environment:
+      - VULNERABLE=1
+    ports:
+      - "5000:5000"
+    networks:
+      - vulnerable_net
+    restart: unless-stopped
+
+  nodegoat-db:
+    image: mongo:6
+    container_name: active_attack_nodegoat_db
+    networks:
+      - vulnerable_net
+    restart: unless-stopped
+
+  nodegoat:
+    image: owasp/nodegoat:latest
+    container_name: active_attack_nodegoat
+    environment:
+      - MONGODB_URI=mongodb://active_attack_nodegoat_db:27017/nodegoat
+    depends_on:
+      - nodegoat-db
+    ports:
+      - "4000:4000"
+    networks:
+      - vulnerable_net
+    restart: unless-stopped
+
+# NOTA: as tags/imagens acima devem ser confirmadas pelo time no Docker Hub antes da
+# primeira execução (nomes de imagem e variáveis de ambiente podem ter mudado desde o
+# treinamento deste assistente). Se uma imagem não existir mais com esse nome, procurar
+# o repositório oficial do projeto (ex.: github.com/juice-shop/juice-shop,
+# github.com/adeyosemanputra/pygoat, github.com/erev0s/VAmPI,
+# github.com/OWASP/NodeGoat) para o Dockerfile/instruções atualizadas.

@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+
+# dados grandes baixados/reconstruídos — mantemos apenas os scripts que os reconstroem
+data/repopairbench/
+data/jsts_sample/
+data/*.jsonl.bak
+
+# logs e resultados intermediários grandes (resultados finais consolidados devem ser versionados
+# manualmente, de forma intencional, em results/)
+logs/*.log
