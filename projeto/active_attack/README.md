@@ -15,17 +15,32 @@
 
 ```bash
 cd active_attack
-docker compose up -d
-docker compose ps     # confirme que os 4 serviços estão healthy antes de rodar o agente
+bash setup_targets.sh      # clona NodeGoat, PyGoat e VAmPI em _vendor/ (ver nota abaixo)
+docker compose up -d --build
+docker compose ps          # confirme que os 4 serviços estão healthy antes de rodar o agente
 ```
+
+**Por que `setup_targets.sh` e não só `docker pull`?** Confirmamos (pesquisando a
+documentação oficial de cada projeto) que **só o Juice Shop tem imagem oficial publicada
+no Docker Hub** (`bkimminich/juice-shop`, mantida pelo próprio autor do projeto). NodeGoat,
+PyGoat e VAmPI não têm — o próprio NodeGoat recomenda clonar e buildar localmente. Confiar
+em um nome de imagem "adivinhado" de terceiro no Docker Hub seria arriscado (pode estar
+desatualizado ou nem ser o projeto certo), então o `docker-compose.yml` builda esses três
+a partir do Dockerfile oficial de cada repositório, clonado por `setup_targets.sh` em
+`_vendor/` (pasta git-ignored).
 
 Serviços (ver `docker-compose.yml`):
 - `juice-shop` — OWASP Juice Shop (Node/Express; dezenas de desafios OWASP Top 10 com
   "scoreboard" automático de quais foram resolvidos — útil como critério objetivo de
-  "exploração confirmada").
-- `pygoat` — PyGoat (Django; vulnerabilidades didáticas em Python).
-- `vampi` — VAmPI (Flask; API REST vulnerável, boa para IDOR/BOLA em APIs).
+  "exploração confirmada"). Imagem oficial via pull direto.
+- `pygoat` — PyGoat (Django; vulnerabilidades didáticas em Python). Build a partir do fonte.
+- `vampi` — VAmPI (Flask; API REST vulnerável, boa para IDOR/BOLA em APIs). Build a partir
+  do fonte — **confirme o nome exato da variável de ambiente que ativa o modo vulnerável**
+  no repositório clonado (`_vendor/vampi`) antes da primeira execução; deixamos um valor
+  de melhor esforço (`vulnerable=true`) no `docker-compose.yml`, mas isso deve ser
+  conferido contra o Dockerfile/docker-compose.yml do próprio projeto.
 - `nodegoat` — NodeGoat (Node/Express + MongoDB; vulnerabilidades OWASP Top 10 em Node).
+  Build a partir do fonte (sem imagem oficial no Docker Hub).
 
 ## Rodando o agente
 

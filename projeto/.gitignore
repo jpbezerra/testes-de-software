@@ -11,3 +11,6 @@ data/*.jsonl.bak
 # logs e resultados intermediários grandes (resultados finais consolidados devem ser versionados
 # manualmente, de forma intencional, em results/)
 logs/*.log
+
+# repositórios das aplicações vulneráveis clonados por active_attack/setup_targets.sh
+active_attack/_vendor/

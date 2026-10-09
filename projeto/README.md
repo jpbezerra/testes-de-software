@@ -44,7 +44,8 @@ projeto/
 │   ├── 06_consolidate.py        # junta tudo num dataset único com o gabarito
 │   └── 07_compute_metrics.py    # precisão/recall/F1/FPR, custo/tempo, teste de McNemar
 ├── active_attack/             # Abordagem D (RQ4) — ver aviso acima
-│   ├── docker-compose.yml       # Juice Shop, PyGoat, VAmPI, NodeGoat em rede isolada
+│   ├── setup_targets.sh         # clona NodeGoat/PyGoat/VAmPI (sem imagem oficial no Docker Hub)
+│   ├── docker-compose.yml       # Juice Shop (pull), PyGoat/VAmPI/NodeGoat (build) em rede isolada
 │   ├── common/target_guard.py   # allowlist de hosts — nunca remover
 │   └── agent_harness.py         # agente de ataque (Condição 1: guiada / Condição 2: autônoma)
 ├── results/                    # saídas (CSV/JSON) de cada etapa — versionar no repositório
@@ -67,8 +68,12 @@ copy .env.example .env           # depois edite .env com as chaves de API do tim
 - `GOOGLE_API_KEY` — Google AI Studio (aistudio.google.com) (**não** é a mesma coisa que Gemini
   app/Gemini Advanced).
 - `OPENROUTER_API_KEY` — openrouter.ai, usado para acessar o **Jev** (`typesafe/jev-latest`).
-- Semgrep é instalado via `pip` (já no `requirements.txt`); CodeQL exige o CLI separado
-  (ver TODO em `scripts/03_run_sast.py`).
+- Semgrep é instalado via `pip` (já no `requirements.txt`).
+- **CodeQL CLI** (opcional, só se `--tools codeql` for usado em `03_run_sast.py`): baixe em
+  https://github.com/github/codeql-action/releases (ou siga
+  https://docs.github.com/en/code-security/codeql-cli/getting-started-with-the-codeql-cli/setting-up-the-codeql-cli)
+  e garanta que o binário `codeql` esteja no PATH. Os query packs são baixados
+  automaticamente na primeira análise (`--download`).
 
 ## Ordem de execução (piloto)
 

@@ -2,10 +2,18 @@
 # executadas em uma rede Docker interna (sem rota para a internet). NÃO adicione serviços
 # que não sejam, eles próprios, aplicações vulneráveis conhecidas e locais.
 #
+# Antes de rodar: execute `bash setup_targets.sh` uma vez para clonar NodeGoat, PyGoat e
+# VAmPI em _vendor/ — eles são buildados a partir do Dockerfile oficial de cada projeto,
+# não de uma imagem pronta do Docker Hub (ver nota em setup_targets.sh sobre por que:
+# resumindo, não há imagem oficial confirmada para esses três no Docker Hub — confiar em
+# um namespace de terceiro adivinhado seria arriscado e pode nem corresponder ao projeto
+# certo). O Juice Shop é exceção: tem imagem oficial publicada pelo próprio mantenedor.
+#
 # Uso:
-#   docker compose up -d
-#   docker compose ps
-#   docker compose down -v        # ao final da coleta
+#   bash setup_targets.sh
+#   docker compose up -d --build
+#   docker compose ps        # confirme que os serviços estão healthy antes de rodar o agente
+#   docker compose down -v   # ao final da coleta
 #
 # IMPORTANTE: "internal: true" na rede remove a rota padrão para a internet dos
 # containers — eles só se comunicam entre si e com o host via as portas publicadas
@@ -17,6 +25,9 @@ networks:
     internal: true
 
 services:
+  # Imagem oficial, publicada pelo mantenedor do projeto — ver
+  # https://help.owasp-juice.shop/part1/running.html (confirmado: `docker run -d -p
+  # 3000:3000 bkimminich/juice-shop`, porta padrão 3000).
   juice-shop:
     image: bkimminich/juice-shop:latest
     container_name: active_attack_juice_shop
@@ -26,8 +37,13 @@ services:
       - vulnerable_net
     restart: unless-stopped
 
+  # PyGoat: buildado a partir do fonte clonado por setup_targets.sh (não há imagem oficial
+  # confirmada no Docker Hub). Confirme a porta exposta no Dockerfile/README do projeto
+  # antes da primeira execução — 8000 é o valor usual documentado pelo OWASP DevGuide,
+  # mas pode variar por versão.
   pygoat:
-    image: pygoat/pygoat:latest
+    build:
+      context: ./_vendor/pygoat
     container_name: active_attack_pygoat
     ports:
       - "8000:8000"
@@ -35,17 +51,26 @@ services:
       - vulnerable_net
     restart: unless-stopped
 
+  # VAmPI: idem, buildado do fonte clonado. O projeto tem sua própria variável de ambiente
+  # para alternar entre modo vulnerável/corrigido — confirme o nome exato (geralmente
+  # algo como "vulnerable=true" em minúsculas) no Dockerfile/docker-compose.yml do
+  # próprio repositório antes de rodar, e ajuste a linha "environment" abaixo.
   vampi:
-    image: erev0s/vampi:latest
+    build:
+      context: ./_vendor/vampi
     container_name: active_attack_vampi
     environment:
-      - VULNERABLE=1
+      - vulnerable=true   # CONFIRME o nome/valor exato no repo clonado antes da coleta
     ports:
       - "5000:5000"
     networks:
       - vulnerable_net
     restart: unless-stopped
 
+  # NodeGoat: SEM imagem oficial no Docker Hub — o próprio projeto recomenda
+  # `docker-compose build && docker-compose up` a partir do repositório clonado
+  # (confirmado em https://github.com/OWASP/NodeGoat, porta padrão 4000). Por isso
+  # buildamos a partir do _vendor/nodegoat clonado, reusando o Dockerfile deles.
   nodegoat-db:
     image: mongo:6
     container_name: active_attack_nodegoat_db
@@ -54,7 +79,8 @@ services:
     restart: unless-stopped
 
   nodegoat:
-    image: owasp/nodegoat:latest
+    build:
+      context: ./_vendor/nodegoat
     container_name: active_attack_nodegoat
     environment:
       - MONGODB_URI=mongodb://active_attack_nodegoat_db:27017/nodegoat
@@ -66,9 +92,9 @@ services:
       - vulnerable_net
     restart: unless-stopped
 
-# NOTA: as tags/imagens acima devem ser confirmadas pelo time no Docker Hub antes da
-# primeira execução (nomes de imagem e variáveis de ambiente podem ter mudado desde o
-# treinamento deste assistente). Se uma imagem não existir mais com esse nome, procurar
-# o repositório oficial do projeto (ex.: github.com/juice-shop/juice-shop,
-# github.com/adeyosemanputra/pygoat, github.com/erev0s/VAmPI,
-# github.com/OWASP/NodeGoat) para o Dockerfile/instruções atualizadas.
+# NOTA: se algum build falhar porque o Dockerfile do projeto clonado espera um contexto
+# diferente (ex.: precisa do docker-compose.yml PRÓPRIO do projeto, que já define serviços
+# auxiliares), o caminho mais simples é usar o docker-compose.yml de dentro de
+# _vendor/<projeto>/ para aquele serviço específico e só então conectar manualmente seu
+# container à rede "vulnerable_net" (docker network connect) — documentar essa decisão em
+# Ameaças à Validade, se necessário.

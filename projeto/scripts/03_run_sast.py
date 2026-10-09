@@ -9,9 +9,13 @@ CodeSample do conjunto de entrada, produzindo:
    com predicted_vulnerable = True se a ferramenta gerou >=1 achado para a amostra
    (comparável diretamente com as Abordagens B/C no script 07).
 
+Requisitos: Semgrep (`pip install semgrep`, já no requirements.txt) e, para --tools codeql,
+o CodeQL CLI instalado e no PATH (ver link no erro impresso se estiver ausente).
+
 Uso:
     python scripts/03_run_sast.py --input data/samples/pilot.jsonl
     python scripts/03_run_sast.py --input data/samples/pilot.jsonl --tools semgrep
+    python scripts/03_run_sast.py --input data/samples/pilot.jsonl --tools semgrep codeql
 """
 from __future__ import annotations
 
@@ -73,23 +77,117 @@ def semgrep_result_to_finding(sample_id: str, raw: dict) -> SastFinding:
     )
 
 
-def run_codeql(code: str, language: str) -> list[dict]:
-    """Placeholder para o CodeQL. CodeQL exige um banco de dados compilado por projeto
-    (não roda direto sobre um snippet isolado como o Semgrep), então a integração real
-    depende de decidir, com o time, se cada CodeSample será analisado como projeto
-    standalone (mais fiel, mais lento) ou se o CodeQL será pulado em favor de só Semgrep
-    (mais simples, ainda defensável citando a limitação em "Ameaças à Validade").
+CODEQL_LANGUAGE_BY_OUR_LANGUAGE = {
+    "python": "python",
+    "javascript": "javascript",
+    "typescript": "javascript",  # o pack "javascript" do CodeQL cobre TS também
+}
+CODEQL_QUERY_PACK_BY_LANGUAGE = {
+    "python": "codeql/python-queries",
+    "javascript": "codeql/javascript-queries",
+}
 
-    TODO equipe: se decidirem incluir CodeQL,
-      1. instalar o CodeQL CLI (https://github.com/github/codeql-cli-binaries) e os
-         query packs oficiais (`codeql pack download codeql/python-queries` etc.);
-      2. para cada amostra, criar um "mini-projeto" de um arquivo só, rodar
-         `codeql database create <db> --language=<lang> --source-root=<dir>`,
-         depois `codeql database analyze <db> <query-pack> --format=sarif-latest -o out.sarif`;
-      3. parsear o SARIF e converter para SastFinding, igual ao Semgrep acima.
-    Por ora, devolve lista vazia (não quebra o pipeline; a ausência aparece nos logs).
+
+def _codeql_sarif_to_findings(sample_id: str, sarif: dict) -> list[SastFinding]:
+    """Converte um resultado SARIF (produzido por `codeql database analyze
+    --format=sarif-latest`) em SastFinding. Formato SARIF: run.results[*] com
+    ruleId, message.text, locations[*].physicalLocation.region.{startLine,endLine}."""
+    findings = []
+    for run in sarif.get("runs", []):
+        # Mapa ruleId -> propriedades da regra (para extrair CWE/severidade quando presentes)
+        rules_by_id = {}
+        for tool_component in [run.get("tool", {}).get("driver", {})] + run.get("tool", {}).get("extensions", []):
+            for rule in tool_component.get("rules", []):
+                rules_by_id[rule.get("id")] = rule
+
+        for result in run.get("results", []):
+            rule_id = result.get("ruleId", "")
+            rule_props = rules_by_id.get(rule_id, {}).get("properties", {})
+            tags = rule_props.get("tags", [])
+            cwe_id = next((t.upper().replace("EXTERNAL/CWE/CWE-", "CWE-") for t in tags if "cwe" in t.lower()), None)
+
+            locations = result.get("locations", [])
+            region = locations[0].get("physicalLocation", {}).get("region", {}) if locations else {}
+            findings.append(
+                SastFinding(
+                    sample_id=sample_id,
+                    tool="codeql",
+                    rule_id=rule_id,
+                    cwe_id=cwe_id,
+                    line_start=region.get("startLine", 0),
+                    line_end=region.get("endLine", region.get("startLine", 0)),
+                    message=result.get("message", {}).get("text", ""),
+                    severity=rule_props.get("problem.severity", ""),
+                    raw=result,
+                )
+            )
+    return findings
+
+
+def run_codeql(sample_id: str, code: str, language: str, keep_tmp: bool = False) -> list[SastFinding]:
+    """Roda o CodeQL CLI de ponta a ponta sobre UMA amostra: cria um projeto de arquivo
+    único em um diretório temporário, compila um banco de dados CodeQL, analisa com o
+    query pack padrão da linguagem e converte o SARIF resultante em SastFinding.
+
+    Requisitos (ver active_attack/README.md — não, este é scripts/README; ver seção
+    "Setup" do README principal): CodeQL CLI instalado e no PATH
+    (https://github.com/github/codeql-action/releases ou
+    https://docs.github.com/en/code-security/codeql-cli/getting-started-with-the-codeql-cli/setting-up-the-codeql-cli).
+    Os query packs são baixados automaticamente na primeira execução via `--download`
+    (comando confirmado na documentação oficial do GitHub).
+
+    Nota de desempenho: criar um banco de dados CodeQL por amostra tem overhead alto
+    (ordem de segundos por amostra, mesmo para um arquivo isolado) porque o CodeQL
+    compila/extrai um modelo relacional do código a cada chamada. Para um piloto de
+    20-30 amostras isso é tranquilo; para a coleta completa (200-300 amostras),
+    considerar paralelizar (ver `--threads` do CodeQL) ou, alternativamente, agrupar
+    amostras do mesmo repo/linguagem em um único banco de dados multi-arquivo.
     """
-    return []
+    codeql_lang = CODEQL_LANGUAGE_BY_OUR_LANGUAGE.get(language)
+    query_pack = CODEQL_QUERY_PACK_BY_LANGUAGE.get(codeql_lang)
+    if codeql_lang is None or query_pack is None:
+        print(f"[aviso] CodeQL: linguagem '{language}' não mapeada, pulando amostra.")
+        return []
+
+    tmp_root = Path(tempfile.mkdtemp(prefix="codeql_sample_"))
+    src_dir = tmp_root / "src"
+    src_dir.mkdir()
+    db_dir = tmp_root / "db"
+    sarif_path = tmp_root / "results.sarif"
+
+    suffix = EXT_BY_LANGUAGE.get(language, ".txt")
+    source_file = src_dir / f"sample{suffix}"
+    source_file.write_text(code, encoding="utf-8")
+
+    try:
+        subprocess.run(
+            [
+                "codeql", "database", "create", str(db_dir),
+                f"--language={codeql_lang}",
+                f"--source-root={src_dir}",
+                "--overwrite",
+            ],
+            capture_output=True, text=True, timeout=300, check=True,
+        )
+        subprocess.run(
+            [
+                "codeql", "database", "analyze", str(db_dir), query_pack,
+                "--format=sarif-latest", f"--output={sarif_path}",
+                "--download",  # baixa o query pack automaticamente se não estiver em disco
+            ],
+            capture_output=True, text=True, timeout=300, check=True,
+        )
+        sarif = json.loads(sarif_path.read_text(encoding="utf-8"))
+        return _codeql_sarif_to_findings(sample_id, sarif)
+    except subprocess.CalledProcessError as exc:
+        print(f"[erro] CodeQL falhou: {exc.stderr[:500] if exc.stderr else exc}")
+        return []
+    except subprocess.TimeoutExpired:
+        print("[erro] CodeQL excedeu o tempo limite (300s) nesta amostra.")
+        return []
+    finally:
+        if not keep_tmp:
+            shutil.rmtree(tmp_root, ignore_errors=True)
 
 
 def main():
@@ -100,6 +198,13 @@ def main():
 
     if shutil.which("semgrep") is None and "semgrep" in args.tools:
         print("[erro] 'semgrep' não encontrado no PATH. Rode: pip install semgrep")
+        return
+    if shutil.which("codeql") is None and "codeql" in args.tools:
+        print(
+            "[erro] 'codeql' não encontrado no PATH. Instale o CodeQL CLI: "
+            "https://docs.github.com/en/code-security/codeql-cli/getting-started-with-the-codeql-cli/setting-up-the-codeql-cli "
+            "e garanta que o binário esteja no PATH antes de rodar com --tools codeql."
+        )
         return
 
     samples = list(read_jsonl(Path(args.input)))
@@ -114,7 +219,7 @@ def main():
             sample_findings += [semgrep_result_to_finding(sample["sample_id"], r) for r in raw_results]
 
         if "codeql" in args.tools:
-            sample_findings += run_codeql(sample["code"], sample["language"])  # placeholder (lista vazia)
+            sample_findings += run_codeql(sample["sample_id"], sample["code"], sample["language"])
 
         findings.extend(sample_findings)
 
